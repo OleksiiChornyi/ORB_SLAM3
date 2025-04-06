@@ -10,7 +10,7 @@ sudo apt-get install libcanberra-gtk-module
 cd ~
 git clone https://github.com/opencv/opencv.git
 cd opencv
-git checkout 4.2.0
+git checkout 4.4.0
 
 sed -i '#define AVFMT_RAWPICTURE 0x0020' | ./modules/videoio/src/cap_ffmpeg_impl.hpp
 sed -i '#define CODEC_FLAG_GLOBAL_HEADER AV_CODEC_FLAG_GLOBAL_HEADER' | ./modules/videoio/src/cap_ffmpeg_impl.hpp
@@ -53,7 +53,18 @@ sudo apt install python3-rosdep
 sudo rosdep init
 rosdep update
 
-echo "export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH::~/ORB_SLAM3/Examples_old/ROS/ORB_SLAM3::~/ORB_SLAM3" >> ~/.bashrc
+sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+sudo apt install ros-noetic-tf ros-noetic-image-transport ros-noetic-cv-bridge
+sudo rosdep update
+
+echo "export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH::~/ORB_SLAM3/Examples_old/ROS/ORB_SLAM3" >> ~/.bashrc
 cd ~/ORB_SLAM3
 ./build.sh
 ./build_ros.sh
+
+
+sudo apt-get install ros-melodic-mavros ros-melodic-mavros-extras
+cd ~/
+wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh
+chmod a+x install_geographiclib_datasets.sh
+./install_geographiclib_datasets.sh
