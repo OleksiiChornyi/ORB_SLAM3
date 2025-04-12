@@ -1,3 +1,4 @@
+# Prepare some required deps
 sudo add-apt-repository "deb http://security.ubuntu.com/ubuntu xenial-security main"
 sudo apt update
 sudo apt-get install build-essential
@@ -7,6 +8,41 @@ sudo apt-get install libglew-dev libboost-all-dev libssl-dev
 sudo apt install libeigen3-dev
 sudo apt-get install libcanberra-gtk-module
 
+# Install Ros noetic
+sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
+sudo apt install curl # if you haven't already installed curl
+curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
+sudo apt update
+sudo apt install ros-noetic-ros-base
+echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+sudo apt install python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential
+sudo rosdep init
+rosdep update
+
+# Install Mavros
+sudo apt-get install ros-melodic-mavros ros-melodic-mavros-extras
+cd ~/
+wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh
+chmod a+x install_geographiclib_datasets.sh
+./install_geographiclib_datasets.sh
+
+# Install Camera read node
+cd ~/
+mkdir -p camera_node/src
+cd camera_node/src
+git clone https://github.com/UbiquityRobotics/raspicam_node.git
+echo "yaml https://raw.githubusercontent.com/UbiquityRobotics/rosdep/master/raspberry-pi.yaml" | sudo tee /etc/ros/rosdep/sources.list.d/30-ubiquity.list > /dev/null
+rosdep update
+cd ..
+rosdep install --from-paths src --ignore-src --rosdistro=noetic -y
+catkin_make
+echo "source ~/camera_node/devel/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+# This requires to reboot raspbrerry. Then it will start using a camera.
+echo "start_x=1" | sudo tee -a /boot/config.txt >> /dev/null
+
+# Install opencv
 cd ~
 git clone https://github.com/opencv/opencv.git
 cd opencv
@@ -24,7 +60,7 @@ sudo make install
 cd ..
 mv opencv opencv4
 
-
+# Install Pangolin
 cd ~
 git clone https://github.com/stevenlovegrove/Pangolin.git
 cd Pangolin 
@@ -35,23 +71,11 @@ cmake .. -D CMAKE_BUILD_TYPE=Release
 make -j 3 
 sudo make install
 
-
+# Install and build ORB_SLAM3
 sudo apt update && sudo apt install locales
 sudo locale-gen en_US en_US.UTF-8
 sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
 export LANG=en_US.UTF-8
-
-sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
-sudo apt install curl # if you haven't already installed curl
-curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
-sudo apt update
-sudo apt install ros-noetic-ros-base
-echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
-source ~/.bashrc
-sudo apt install python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential
-sudo apt install python3-rosdep
-sudo rosdep init
-rosdep update
 
 sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 sudo apt install ros-noetic-tf ros-noetic-image-transport ros-noetic-cv-bridge
@@ -61,10 +85,3 @@ echo "export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH::~/ORB_SLAM3/Examples_old/ROS/OR
 cd ~/ORB_SLAM3
 ./build.sh
 ./build_ros.sh
-
-
-sudo apt-get install ros-melodic-mavros ros-melodic-mavros-extras
-cd ~/
-wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh
-chmod a+x install_geographiclib_datasets.sh
-./install_geographiclib_datasets.sh

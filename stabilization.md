@@ -10,3 +10,7 @@ Laptop to drone:
 Rasberi to drone:
 
 - roslaunch mavros apm.launch fcu_url:=/dev/serial0 navlink_version:=2.0 
+
+2. Start image node
+
+- roslaunch raspicam_node camerav2_1280x960.launch
