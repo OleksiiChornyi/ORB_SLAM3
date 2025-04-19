@@ -15,6 +15,17 @@ Rasberi to drone:
 
 - roslaunch raspicam_node camerav2_1280x960.launch
 
+3. Start SLAM
+
+```
+CAMERA_TOPIC_NAME="/raspicam_node/image/compressed"
+IMAGE_FORMAT="compressed_jpeg"
+VOCABLUARY="~/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="~/ORB_SLAM3/rpi4_calibration.yaml"
+
+rosrun ORB_SLAM3 Stabilization $CAMERA_TOPIC_NAME $IMAGE_FORMAT $VOCABLUARY $CAMERA_CALIBRATION
+```
+
 ## Camera Calibration
 
 NOTE: This instruction is extension of https://github.com/UbiquityRobotics/raspicam_node?tab=readme-ov-file#calibration

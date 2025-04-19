@@ -37,14 +37,6 @@ void saveCurrentPoseCallback(const std_msgs::Empty::ConstPtr& msg) {
     should_save_pose = true;
 }
 
-cv_bridge::CvImageConstPtr ToCvImageMessage(const sensor_msgs::ImageConstPtr& msg) {
-    try {
-        return cv_bridge::toCvShare(msg);
-    } catch (cv_bridge::Exception& e) {
-        throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
-    }
-}
-
 void saveCheckpointPose(const Sophus::SE3f& pose) {
     checkpoint_pose = pose;
     should_save_pose = false;
@@ -88,9 +80,8 @@ geometry_msgs::TwistStamped offsetToDroneVelocity(
     return cmd_vel_stamped;
 }
 
-void imageCallback(const sensor_msgs::ImageConstPtr& msg)
+void processImage(const cv_bridge::CvImageConstPtr& cv_ptr)
 {
-    cv_bridge::CvImageConstPtr cv_ptr = ToCvImageMessage(msg);
     Sophus::SE3f pose = slam->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
     if (pose.translation().norm() == 0) return;
     
@@ -113,20 +104,61 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
     velocity_pub.publish(cmd_vel_stamped);
 }
 
+void rawImageCallback(const sensor_msgs::ImageConstPtr& msg)
+{
+    try {
+        processImage(cv_bridge::toCvShare(msg));
+    } catch (cv_bridge::Exception& e) {
+        throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
+    }
+}
+
+void compressedImageCallback(const sensor_msgs::CompressedImageConstPtr& msg)
+{
+    try {
+        cv::Mat decoded_image = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_COLOR);
+
+        cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
+        cv_ptr->image = decoded_image;
+        cv_ptr->encoding = sensor_msgs::image_encodings::BGR8;
+        cv_ptr->header = msg->header;
+
+        processImage(cv_ptr);
+    } catch (const std::exception& e) {
+        throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
+    }
+}
+
+std::string getValidatedImageFormat(const std::string& image_format)
+{
+    bool is_valid = (image_format == "raw") || (image_format == "compressed_jpeg");
+    if (!is_valid)
+    {
+        cerr << endl << "Error: Invalid image format '" << image_format << "'. Allowed formats: 'raw', 'compressed_jpeg'" << endl;
+        ros::shutdown();
+        exit(1);
+    }
+
+    return image_format;
+}
+
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "orb_slam3_mono");
+    ros::init(argc, argv, "orb_slam3_stabilization");
     ros::NodeHandle nh;
 
-    if(argc != 3)
+    if(argc != 5)
     {
-        cerr << endl << "Usage: rosrun ORB_SLAM3 Mono path_to_vocabulary path_to_settings" << endl;        
+        cerr << endl << "Usage: rosrun ORB_SLAM3 Stabilization $camera_topic_name $image_format $path_to_vocabulary $path_to_settings" << endl;        
         ros::shutdown();
         return 1;
     }   
 
-    std::string vocab_path = argv[1];
-    std::string camera_calibration_path = argv[2];
+    std::string camera_topic_name = argv[1];
+    std::string image_format = getValidatedImageFormat(argv[2]);
+    std::string vocab_path = argv[3];
+    std::string camera_calibration_path = argv[4];
+
     slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::MONOCULAR, true);
 
     velocity_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
@@ -134,7 +166,17 @@ int main(int argc, char** argv)
     ros::Subscriber sub_ratoration_k = nh.subscribe("/stabilization/rotation_k", 1, rotationCallback);
     ros::Subscriber sub_hold = nh.subscribe("/stabilization/enable_hold", 1, holdCallback);
     ros::Subscriber sub_save_pose = nh.subscribe("/stabilization/save_current_pose", 1, saveCurrentPoseCallback);
-    ros::Subscriber sub_image = nh.subscribe("/webcam/image_raw", 1, imageCallback);
+    
+    ros::Subscriber sub_image;
+    if (image_format == "raw")
+    {
+        sub_image = nh.subscribe<sensor_msgs::Image>(camera_topic_name, 1, rawImageCallback);
+    }
+    else if (image_format == "compressed_jpeg")
+    {
+        sub_image = nh.subscribe(camera_topic_name, 1, compressedImageCallback);
+    }
+
     ros::spin();
     
     slam->Shutdown();
