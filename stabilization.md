@@ -7,9 +7,10 @@ Laptop to drone:
 - roslaunch mavros apm.launch fcu_url:=/dev/ttyACM0:115200 mavlink_version:=2.0
 - rosservice call /mavros/set_stream_rate 0 10 1
 
-Rasberi to drone:
+Check available tty connections:
 
-- roslaunch mavros apm.launch fcu_url:=/dev/serial0 navlink_version:=2.0 
+- ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
+
 
 2. Start image node
 
@@ -20,8 +21,8 @@ Rasberi to drone:
 ```
 CAMERA_TOPIC_NAME="/raspicam_node/image/compressed"
 IMAGE_FORMAT="compressed_jpeg"
-VOCABLUARY="~/ORB_SLAM3/Vocabulary/ORBvoc.txt"
-CAMERA_CALIBRATION="~/ORB_SLAM3/rpi4_calibration.yaml"
+VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/rpi4_calibration.yaml"
 
 rosrun ORB_SLAM3 Stabilization $CAMERA_TOPIC_NAME $IMAGE_FORMAT $VOCABLUARY $CAMERA_CALIBRATION
 ```
