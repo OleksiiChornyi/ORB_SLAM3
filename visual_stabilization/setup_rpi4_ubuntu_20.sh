@@ -91,8 +91,8 @@ sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 sudo apt install ros-noetic-tf ros-noetic-image-transport ros-noetic-cv-bridge
 sudo rosdep update
 
-echo "export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH::~/ORB_SLAM3/Examples_old/ROS/ORB_SLAM3" >> ~/.bashrc
+echo "export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH::~/ORB_SLAM3/visual_stabilization/ros1/ORB_SMAL3" >> ~/.bashrc
 source ~/.bashrc
 cd ~/ORB_SLAM3
 ./build.sh
-./build_ros.sh
+./visual_stabilization/build_ros1.sh

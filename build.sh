@@ -21,7 +21,7 @@ echo "Configuring and building Thirdparty/Sophus ..."
 
 mkdir build
 cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS="-Wno-error=array-bounds"
 make -j 2
 
 cd ../../../

@@ -91,3 +91,7 @@ my_settings.txt
 borrar/*
 
 */ExecMean.txt
+
+visual_stabilization/*/build
+visual_stabilization/*/install
+visual_stabilization/*/log
