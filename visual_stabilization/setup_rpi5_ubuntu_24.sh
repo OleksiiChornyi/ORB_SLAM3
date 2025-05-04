@@ -30,7 +30,7 @@ sudo apt install -y python3-yaml python3-ply libglib2.0-dev libgstreamer-plugins
 git clone https://github.com/raspberrypi/libcamera.git
 cd libcamera
 meson setup build --buildtype=release -Dpipelines=rpi/vc4,rpi/pisp -Dipas=rpi/vc4,rpi/pisp -Dv4l2=true -Dgstreamer=enabled -Dtest=false -Dlc-compliance=disabled -Dcam=enabled -Dqcam=disabled -Ddocumentation=disabled -Dpycamera=enabled
-ninja -C build install
+sudo ninja -C build install
 
 mkdir -p ~/rpi_camera/src
 cd ~/rpi_camera/src
@@ -40,6 +40,8 @@ rosdep update
 rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO --skip-keys=libcamera
 
 colcon build --event-handlers=console_direct+
+echo "/usr/local/lib/aarch64-linux-gnu" | sudo tee /etc/ld.so.conf.d/libcamera.conf
+sudo chmod -R 777 /dev/
 source ~/rpi_camera/install/setup.bash
 echo "source ~/rpi_camera/install/setup.bash" >> ~/.bashrc
 
@@ -68,11 +70,11 @@ cmake ..
 make -j2
 sudo make install
 
-cd ~
-git clone https://github.com/koroldavid/ORB_SLAM3.git
-cd ORB_SLAM3
+# Build ORB_SLAM3
+cd ~/ORB_SLAM3
 
 mv CMakeLists_ubuntu_24.txt CMakeLists.txt
 ./build.sh
 ./visual_stabilization/build_ros2.sh
+source ~/ORB_SLAM3/visual_stabilization/ros2/install/setup.bash
 echo "source ~/ORB_SLAM3/visual_stabilization/ros2/install/setup.bash" >> ~/.bashrc

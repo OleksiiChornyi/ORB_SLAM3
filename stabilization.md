@@ -1,3 +1,4 @@
+# ROS1
 
 1. Connect to flight controller using MavRos to get all topics
 
@@ -26,6 +27,8 @@ CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/rpi4_calibration.yaml"
 
 rosrun ORB_SLAM3 Stabilization $CAMERA_TOPIC_NAME $IMAGE_FORMAT $VOCABLUARY $CAMERA_CALIBRATION
 ```
+
+# Start ROS2
 
 ## Camera Calibration
 
@@ -65,3 +68,20 @@ rosrun camera_calibration cameracalibrator.py --size ${grid_size} --square ${squ
 ```
 
 7. Now move you grid to different poses in camera. Best follow advises from: https://wiki.ros.org/camera_calibration/Tutorials/MonocularCalibration
+
+# ROS2
+
+2. Start image node
+
+- ros2 run camera_ros camera_node
+
+3. Start SLAM
+
+```
+CAMERA_TOPIC_NAME="/camera/image_raw/compressed"
+IMAGE_FORMAT="compressed_jpeg"
+VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/rpi4_calibration.yaml"
+
+rosrun ORB_SLAM3 Stabilization $CAMERA_TOPIC_NAME $IMAGE_FORMAT $VOCABLUARY $CAMERA_CALIBRATION
+```
