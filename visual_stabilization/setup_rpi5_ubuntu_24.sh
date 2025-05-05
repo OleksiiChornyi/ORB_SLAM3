@@ -20,6 +20,12 @@ echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
 sudo apt install python3-rosdep
 sudo rosdep init
 
+# Install mavros
+sudo apt install ros-jazzy-mavros ros-jazzy-mavros-extras
+cd ~/
+wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh
+chmod a+x install_geographiclib_datasets.sh
+sudo ./install_geographiclib_datasets.sh
 
 # Install camera images reader
 sudo apt update

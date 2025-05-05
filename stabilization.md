@@ -71,6 +71,10 @@ rosrun camera_calibration cameracalibrator.py --size ${grid_size} --square ${squ
 
 # ROS2
 
+1. Start mavros
+
+- ros2 launch mavros apm.launch fcu_url:=/dev/ttyACM0:115200
+
 2. Start image node
 
 - ros2 run camera_ros camera_node
