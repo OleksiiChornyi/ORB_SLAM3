@@ -1,5 +1,6 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/Imu.h>
 #include <cv_bridge/cv_bridge.h>
 #include "System.h"
 
@@ -21,6 +22,12 @@ double movement_k = 5.0;
 double rotation_k = 0.25;
 
 ros::Publisher velocity_pub;
+
+std::queue<sensor_msgs::ImuConstPtr> imuBuf;
+std::mutex imuBufMutex;
+
+std::queue<cv_bridge::CvImageConstPtr> imgBuf;
+std::mutex imgBufMutex;
 
 void movementCallback(const std_msgs::Float64::ConstPtr& msg) {
     movement_k = msg->data;
@@ -81,9 +88,11 @@ geometry_msgs::TwistStamped offsetToDroneVelocity(
     return cmd_vel_stamped;
 }
 
-void processImage(const cv_bridge::CvImageConstPtr& cv_ptr)
-{
-    Sophus::SE3f pose = slam->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
+void processDataAndStibilize(
+    const cv_bridge::CvImageConstPtr& cv_img,
+    const std::vector<ORB_SLAM3::IMU::Point>& imu_vector
+) {
+    Sophus::SE3f pose = slam->TrackMonocular(cv_img->image,cv_img->header.stamp.toSec(), imu_vector);
     if (pose.translation().norm() == 0) return;
     
     if (should_save_pose) {
@@ -105,10 +114,24 @@ void processImage(const cv_bridge::CvImageConstPtr& cv_ptr)
     velocity_pub.publish(cmd_vel_stamped);
 }
 
+void addImuToBuffer(const sensor_msgs::ImuConstPtr &imu_msg)
+{
+    imuBufMutex.lock();
+    imuBuf.push(imu_msg);
+    imuBufMutex.unlock();
+}
+
+void addImageToBuffer(const cv_bridge::CvImageConstPtr& cv_ptr)
+{
+    imgBufMutex.lock();
+    imgBuf.push(cv_ptr);
+    imgBufMutex.unlock();
+}
+
 void rawImageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
     try {
-        processImage(cv_bridge::toCvShare(msg));
+        addImageToBuffer(cv_bridge::toCvShare(msg));
     } catch (cv_bridge::Exception& e) {
         throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
     }
@@ -124,7 +147,7 @@ void compressedImageCallback(const sensor_msgs::CompressedImageConstPtr& msg)
         cv_ptr->encoding = sensor_msgs::image_encodings::BGR8;
         cv_ptr->header = msg->header;
 
-        processImage(cv_ptr);
+        addImageToBuffer(cv_ptr);
     } catch (const std::exception& e) {
         throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
     }
@@ -141,6 +164,63 @@ std::string getValidatedImageFormat(const std::string& image_format)
     }
 
     return image_format;
+}
+
+std::vector<ORB_SLAM3::IMU::Point> extractImuPointsUpTo(const ros::Time& image_timestamp) {
+    std::vector<ORB_SLAM3::IMU::Point> imu_vector;
+
+    std::lock_guard<std::mutex> lock(imuBufMutex);
+    while (!imuBuf.empty()) {
+        auto imu_msg = imuBuf.front();
+        if (imu_msg->header.stamp > image_timestamp) {
+            break;
+        }
+
+        cv::Point3f acc(
+            imu_msg->linear_acceleration.x,
+            imu_msg->linear_acceleration.y,
+            imu_msg->linear_acceleration.z
+        );
+        cv::Point3f gyr(
+            imu_msg->angular_velocity.x,
+            imu_msg->angular_velocity.y,
+            imu_msg->angular_velocity.z
+        );
+        double imu_timestamp = imu_msg->header.stamp.toSec();
+
+        std::cout << "Got IMU:" << imu_msg->header.stamp << "\n";
+        imu_vector.push_back(ORB_SLAM3::IMU::Point(acc, gyr, imu_timestamp));
+        imuBuf.pop();
+    }
+
+    return imu_vector;
+}
+
+cv_bridge::CvImageConstPtr extractOldestImage() {
+    while (1) {
+        if (imgBuf.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+    
+        imgBufMutex.lock();
+        cv_bridge::CvImageConstPtr cv_img = imgBuf.front();
+        imgBuf.pop();
+        imgBufMutex.unlock();
+    
+        return cv_img;
+    }
+}
+
+void doStabilizationSync() {
+    while (1) {        
+        cv_bridge::CvImageConstPtr cv_img = extractOldestImage();
+        std::cout << "Got image:" << cv_img->header.stamp << "\n";
+        std::vector<ORB_SLAM3::IMU::Point> imu_points = extractImuPointsUpTo(cv_img->header.stamp);
+        processDataAndStibilize(cv_img, imu_points);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 }
 
 int main(int argc, char** argv)
@@ -167,17 +247,19 @@ int main(int argc, char** argv)
     ros::Subscriber sub_ratoration_k = nh.subscribe("/stabilization/rotation_k", 1, rotationCallback);
     ros::Subscriber sub_hold = nh.subscribe("/stabilization/enable_hold", 1, holdCallback);
     ros::Subscriber sub_save_pose = nh.subscribe("/stabilization/save_current_pose", 1, saveCurrentPoseCallback);
+    ros::Subscriber sub_imu = nh.subscribe("/mavros/imu/data", 1000, addImuToBuffer);
     
     ros::Subscriber sub_image;
     if (image_format == "raw")
     {
-        sub_image = nh.subscribe<sensor_msgs::Image>(camera_topic_name, 1, rawImageCallback);
+        sub_image = nh.subscribe<sensor_msgs::Image>(camera_topic_name, 100, rawImageCallback);
     }
     else if (image_format == "compressed_jpeg")
     {
-        sub_image = nh.subscribe(camera_topic_name, 1, compressedImageCallback);
+        sub_image = nh.subscribe(camera_topic_name, 100, compressedImageCallback);
     }
 
+    std::thread myThread(doStabilizationSync);
     ros::spin();
     
     slam->Shutdown();
