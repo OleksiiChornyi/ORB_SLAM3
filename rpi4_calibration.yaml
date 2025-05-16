@@ -32,7 +32,7 @@ Camera.width: 1280
 Camera.height: 960
 
 # Camera frames per second 
-Camera.fps: 10.0  # adjusted to match camerav2_1280x960_10fps.launch
+Camera.fps: 30.0  # adjusted to match camerav2_1280x960_10fps.launch
 
 # Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
 Camera.RGB: 1
@@ -57,7 +57,7 @@ ORBextractor.nLevels: 8
 # Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
 # Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
 # You can lower these values if your images have low contrast			
-ORBextractor.iniThFAST: 20
+ORBextractor.iniThFAST: 30
 ORBextractor.minThFAST: 7
 
 #--------------------------------------------------------------------------------------------

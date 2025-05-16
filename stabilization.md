@@ -73,11 +73,13 @@ rosrun camera_calibration cameracalibrator.py --size ${grid_size} --square ${squ
 
 1. Start mavros
 
-- ros2 launch mavros apm.launch fcu_url:=/dev/ttyACM0:115200
+- sudo chmod 666 /dev/ttyAMA0
+- ros2 launch mavros apm.launch fcu_url:=/dev/ttyAMA10:57600
+- ros2 service call /mavros/set_stream_rate mavros_msgs/srv/StreamRate "{stream_id: 0, message_rate: 10, on_off: true}"
 
 2. Start image node
 
-- ros2 run camera_ros camera_node
+- ros2 run camera_ros camera_node --ros-args -p width:=320 -p height:=240 -p FrameDurationLimits:="[32500,32500]"
 
 3. Start SLAM
 
@@ -87,5 +89,5 @@ IMAGE_FORMAT="compressed_jpeg"
 VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/rpi4_calibration.yaml"
 
-rosrun ORB_SLAM3 Stabilization $CAMERA_TOPIC_NAME $IMAGE_FORMAT $VOCABLUARY $CAMERA_CALIBRATION
+ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME $IMAGE_FORMAT $VOCABLUARY $CAMERA_CALIBRATION
 ```
