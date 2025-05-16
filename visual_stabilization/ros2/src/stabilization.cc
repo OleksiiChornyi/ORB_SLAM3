@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
@@ -42,15 +43,21 @@ public:
             "/stabilization/save_current_pose", 1, std::bind(&SLAMStabilizer::saveCurrentPoseCallback, this, _1)
         );
 
+        sub_imu = this->create_subscription<sensor_msgs::msg::Imu>(
+            "/mavros/imu/data", 1000, std::bind(&SLAMStabilizer::addImuToBuffer, this, _1)
+        );
+
         if (image_format == "raw") {
             sub_image = this->create_subscription<sensor_msgs::msg::Image>(
-                camera_topic_name, 1, std::bind(&SLAMStabilizer::rawImageCallback, this, _1)
+                camera_topic_name, 100, std::bind(&SLAMStabilizer::rawImageCallback, this, _1)
             );
         } else if (image_format == "compressed_jpeg") {
             sub_compressed_image = this->create_subscription<sensor_msgs::msg::CompressedImage>(
-                camera_topic_name, 1, std::bind(&SLAMStabilizer::compressedImageCallback, this, _1)
+                camera_topic_name, 100, std::bind(&SLAMStabilizer::compressedImageCallback, this, _1)
             );
         }
+
+        stabilization_thread = std::thread(&SLAMStabilizer::doStabilizationSync, this);
     }
 
     ~SLAMStabilizer() {
@@ -68,13 +75,22 @@ private:
     double movement_k = 5.0;
     double rotation_k = 0.25;
 
+    std::queue<sensor_msgs::msg::Imu::SharedPtr> imuBuf;
+    std::mutex imuBufMutex;
+
+    std::queue<cv_bridge::CvImageConstPtr> imgBuf;
+    std::mutex imgBufMutex;
+
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_movement_k;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_rotation_k;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_hold;
     rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sub_save_pose;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_image;
     rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr sub_compressed_image;
+
+    std::thread stabilization_thread;
 
     void movementCallback(const std_msgs::msg::Float64::SharedPtr msg) {
         std::cout << msg->data << "movementCallback:\n";
@@ -103,6 +119,18 @@ private:
         std::cout << "x: " << translation.x() << ", y: " << translation.y() << ", z: " << translation.z() << std::endl;
     }
 
+    void addImuToBuffer(const sensor_msgs::msg::Imu::SharedPtr imu_msg) {
+        imuBufMutex.lock();
+        imuBuf.push(imu_msg);
+        imuBufMutex.unlock();
+    }
+
+    void addImageToBuffer(const cv_bridge::CvImageConstPtr& cv_ptr) {
+        imgBufMutex.lock();
+        imgBuf.push(cv_ptr);
+        imgBufMutex.unlock();
+    }
+
     geometry_msgs::msg::TwistStamped offsetToDroneVelocity(
         const Eigen::Vector3f& offset,
         const Eigen::Matrix3f& rot_offset
@@ -125,10 +153,12 @@ private:
         return velocity_command;
     }
 
-    void processImage(const cv_bridge::CvImageConstPtr& cv_ptr)
-    {
-        double timestamp = rclcpp::Time(cv_ptr->header.stamp).seconds();
-        Sophus::SE3f pose = slam->TrackMonocular(cv_ptr->image,timestamp);
+    void processDataAndStibilize(
+        const cv_bridge::CvImageConstPtr& cv_ptr,
+        const std::vector<ORB_SLAM3::IMU::Point>& imu_vector
+    ) {
+        double timestamp = rclcpp::Clock(RCL_SYSTEM_TIME).now().seconds();
+        Sophus::SE3f pose = slam->TrackMonocular(cv_ptr->image, timestamp, imu_vector);
         if (pose.translation().norm() == 0) return;
         
         if (should_save_pose) {
@@ -149,11 +179,68 @@ private:
         geometry_msgs::msg::TwistStamped cmd_vel_stamped = offsetToDroneVelocity(offset, rotation_offset);
         velocity_pub->publish(cmd_vel_stamped);
     }
+
+    cv_bridge::CvImageConstPtr extractOldestImage() {
+        while (1) {
+            if (imgBuf.empty()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
+        
+            imgBufMutex.lock();
+            cv_bridge::CvImageConstPtr cv_img = imgBuf.front();
+            imgBuf.pop();
+            imgBufMutex.unlock();
+        
+            return cv_img;
+        }
+    }
+
+    std::vector<ORB_SLAM3::IMU::Point> extractImuPointsUpTo(const rclcpp::Time& image_timestamp) {
+        std::vector<ORB_SLAM3::IMU::Point> imu_vector;
+
+        std::lock_guard<std::mutex> lock(imuBufMutex);
+        while (!imuBuf.empty()) {
+            auto imu_msg = imuBuf.front();
+            auto imu_timestamp =  rclcpp::Time(imu_msg->header.stamp);
+            if (imu_timestamp > image_timestamp) {
+                break;
+            }
+
+            cv::Point3f acc(
+                imu_msg->linear_acceleration.x,
+                imu_msg->linear_acceleration.y,
+                imu_msg->linear_acceleration.z
+            );
+            cv::Point3f gyr(
+                imu_msg->angular_velocity.x,
+                imu_msg->angular_velocity.y,
+                imu_msg->angular_velocity.z
+            );
+
+            std::cout << "Got IMU:" << imu_timestamp.seconds() << "\n";
+            imu_vector.push_back(ORB_SLAM3::IMU::Point(acc, gyr, imu_timestamp.seconds()));
+            imuBuf.pop();
+        }
+
+        return imu_vector;
+    }
+
+    void doStabilizationSync() {
+        while (1) {        
+            cv_bridge::CvImageConstPtr cv_img = extractOldestImage();
+            std::cout << "Got image:" << rclcpp::Time(cv_img->header.stamp).seconds() << "\n";
+            std::vector<ORB_SLAM3::IMU::Point> imu_points = extractImuPointsUpTo(cv_img->header.stamp);
+            processDataAndStibilize(cv_img, imu_points);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
     
     void rawImageCallback(const sensor_msgs::msg::Image::SharedPtr msg)
     {
         try {
-            processImage(cv_bridge::toCvShare(msg));
+            addImageToBuffer(cv_bridge::toCvShare(msg));
         } catch (cv_bridge::Exception& e) {
             throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
         }
@@ -170,7 +257,7 @@ private:
             cv_ptr->encoding = sensor_msgs::image_encodings::BGR8;
             cv_ptr->header = msg->header;
     
-            processImage(cv_ptr);
+            addImageToBuffer(cv_ptr);
         } catch (const std::exception& e) {
             throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
         }
