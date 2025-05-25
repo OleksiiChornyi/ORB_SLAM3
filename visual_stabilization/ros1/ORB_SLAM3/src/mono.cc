@@ -1,9 +1,5 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
-#include <sensor_msgs/CompressedImage.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
 
 #include <cv_bridge/cv_bridge.h>
 #include "System.h"
@@ -89,6 +85,8 @@ geometry_msgs::TwistStamped offsetToDroneVelocity(
 void processImage(const cv_bridge::CvImageConstPtr& cv_ptr)
 {
     Sophus::SE3f pose = slam->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
+
+
     if (pose.translation().norm() == 0) return;
 
     if (should_save_pose) {
@@ -110,39 +108,42 @@ void processImage(const cv_bridge::CvImageConstPtr& cv_ptr)
     velocity_pub.publish(cmd_vel_stamped);
 }
 
-std::atomic<bool> use_left{false};
-std::atomic<int> processed_images{0};
-sensor_msgs::CompressedImageConstPtr chooseImage(
-    const sensor_msgs::CompressedImageConstPtr& left,
-    const sensor_msgs::CompressedImageConstPtr& right
-) {
-    processed_images = processed_images + 1;
-    if (processed_images > 15) {
-        processed_images = 1;
-        use_left = !use_left;
+void rawImageCallback(const sensor_msgs::ImageConstPtr& msg)
+{
+    try {
+        processImage(cv_bridge::toCvShare(msg));
+    } catch (cv_bridge::Exception& e) {
+        throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
     }
-
-    return use_left ? left : right;
 }
 
-void compressedImageCallback(
-    const sensor_msgs::CompressedImageConstPtr& left,
-    const sensor_msgs::CompressedImageConstPtr& right
-)
+void compressedImageCallback(const sensor_msgs::CompressedImageConstPtr& msg)
 {
-    sensor_msgs::CompressedImageConstPtr raw_image = chooseImage(left, right);
     try {
-        cv::Mat decoded_image = cv::imdecode(cv::Mat(raw_image->data), cv::IMREAD_COLOR);
+        cv::Mat decoded_image = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_COLOR);
 
         cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
         cv_ptr->image = decoded_image;
         cv_ptr->encoding = sensor_msgs::image_encodings::BGR8;
-        cv_ptr->header = raw_image->header;
+        cv_ptr->header = msg->header;
 
         processImage(cv_ptr);
     } catch (const std::exception& e) {
         throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
     }
+}
+
+std::string getValidatedImageFormat(const std::string& image_format)
+{
+    bool is_valid = (image_format == "raw") || (image_format == "compressed_jpeg");
+    if (!is_valid)
+    {
+        cerr << endl << "Error: Invalid image format '" << image_format << "'. Allowed formats: 'raw', 'compressed_jpeg'" << endl;
+        ros::shutdown();
+        exit(1);
+    }
+
+    return image_format;
 }
 
 int main(int argc, char** argv)
@@ -152,13 +153,13 @@ int main(int argc, char** argv)
 
     if(argc != 5)
     {
-        cerr << endl << "Usage: rosrun ORB_SLAM3 Stabilization $camera_topic_name_left $camera_topic_name_right $path_to_vocabulary $path_to_settings" << endl;        
+        cerr << endl << "Usage: rosrun ORB_SLAM3 Stabilization $camera_topic_name $image_format $path_to_vocabulary $path_to_settings" << endl;        
         ros::shutdown();
         return 1;
     }   
 
-    std::string camera_topic_name_left = argv[1];
-    std::string camera_topic_name_right = argv[2];
+    std::string camera_topic_name = argv[1];
+    std::string image_format = getValidatedImageFormat(argv[2]);
     std::string vocab_path = argv[3];
     std::string camera_calibration_path = argv[4];
 
@@ -170,11 +171,16 @@ int main(int argc, char** argv)
     ros::Subscriber sub_hold = nh.subscribe("/stabilization/enable_hold", 1, holdCallback);
     ros::Subscriber sub_save_pose = nh.subscribe("/stabilization/save_current_pose", 1, saveCurrentPoseCallback);
 
-    message_filters::Subscriber<sensor_msgs::CompressedImage> left_sub(nh, camera_topic_name_left, 1);
-    message_filters::Subscriber<sensor_msgs::CompressedImage> right_sub(nh, camera_topic_name_right, 1);
-    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::CompressedImage, sensor_msgs::CompressedImage> sync_pol;
-    message_filters::Synchronizer<sync_pol> sync(sync_pol(10), left_sub,right_sub);
-    sync.registerCallback(boost::bind(&compressedImageCallback, _1, _2));
+
+    ros::Subscriber sub_image;
+    if (image_format == "raw")
+    {
+        sub_image = nh.subscribe<sensor_msgs::Image>(camera_topic_name, 1, rawImageCallback);
+    }
+    else if (image_format == "compressed_jpeg")
+    {
+        sub_image = nh.subscribe(camera_topic_name, 1, compressedImageCallback);
+    }
 
     ros::spin();
 
