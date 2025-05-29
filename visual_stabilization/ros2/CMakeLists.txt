@@ -10,6 +10,7 @@ find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(message_filters REQUIRED)
 
 # Set C++ standard to C++11
 set(CMAKE_CXX_STANDARD 11)
@@ -40,6 +41,7 @@ ament_target_dependencies(Stabilization
   Eigen3
   Pangolin
   sensor_msgs
+  message_filters
 )
 
 # Link additional libraries

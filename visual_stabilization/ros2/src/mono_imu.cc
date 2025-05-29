@@ -1,10 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
-
+#include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/synchronizer.h>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -16,19 +13,17 @@
 #include <chrono>
 #include <atomic>
 
-using sensor_msgs::msg::CompressedImage;
 using std::placeholders::_1;
 
 class SLAMStabilizer : public rclcpp::Node {
 public:
     SLAMStabilizer(
-        const std::string& camera_topic_name_left,
-        const std::string& camera_topic_name_right,
+        const std::string& camera_topic_name,
+        const std::string& image_format,
         const std::string& vocab_path,
         const std::string& camera_calibration_path
     ): Node("orb_slam3_stabilization") {
-
-        slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::STEREO, true);
+        slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::MONOCULAR, true);
 
         velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
 
@@ -48,10 +43,21 @@ public:
             "/stabilization/save_current_pose", 1, std::bind(&SLAMStabilizer::saveCurrentPoseCallback, this, _1)
         );
 
-        left_sub.subscribe(this, camera_topic_name_left);
-        right_sub.subscribe(this, camera_topic_name_right);
-        image_sync_sub = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(10), left_sub, right_sub);
-        image_sync_sub->registerCallback(&SLAMStabilizer::compressedImageCallback, this);
+        sub_imu = this->create_subscription<sensor_msgs::msg::Imu>(
+            "/mavros/imu/data", 1000, std::bind(&SLAMStabilizer::addImuToBuffer, this, _1)
+        );
+
+        if (image_format == "raw") {
+            sub_image = this->create_subscription<sensor_msgs::msg::Image>(
+                camera_topic_name, 100, std::bind(&SLAMStabilizer::rawImageCallback, this, _1)
+            );
+        } else if (image_format == "compressed_jpeg") {
+            sub_compressed_image = this->create_subscription<sensor_msgs::msg::CompressedImage>(
+                camera_topic_name, 100, std::bind(&SLAMStabilizer::compressedImageCallback, this, _1)
+            );
+        }
+
+        stabilization_thread = std::thread(&SLAMStabilizer::doStabilizationSync, this);
     }
 
     ~SLAMStabilizer() {
@@ -66,24 +72,25 @@ private:
     std::atomic<bool> should_save_pose{false};
     std::atomic<bool> should_go_to_pose{false};
 
-    std::atomic<int> processed_images{0};
-
     double movement_k = 5.0;
     double rotation_k = 0.25;
+
+    std::queue<sensor_msgs::msg::Imu::SharedPtr> imuBuf;
+    std::mutex imuBufMutex;
+
+    std::queue<cv_bridge::CvImageConstPtr> imgBuf;
+    std::mutex imgBufMutex;
 
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_movement_k;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_rotation_k;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_hold;
     rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sub_save_pose;
-
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_image;
     rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr sub_compressed_image;
 
-    message_filters::Subscriber<sensor_msgs::msg::CompressedImage> left_sub;
-    message_filters::Subscriber<sensor_msgs::msg::CompressedImage> right_sub;
-
-    typedef message_filters::sync_policies::ApproximateTime<CompressedImage, CompressedImage> SyncPolicy;
-    std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> image_sync_sub;
+    std::thread stabilization_thread;
 
     void movementCallback(const std_msgs::msg::Float64::SharedPtr msg) {
         std::cout << msg->data << "movementCallback:\n";
@@ -112,6 +119,18 @@ private:
         std::cout << "x: " << translation.x() << ", y: " << translation.y() << ", z: " << translation.z() << std::endl;
     }
 
+    void addImuToBuffer(const sensor_msgs::msg::Imu::SharedPtr imu_msg) {
+        imuBufMutex.lock();
+        imuBuf.push(imu_msg);
+        imuBufMutex.unlock();
+    }
+
+    void addImageToBuffer(const cv_bridge::CvImageConstPtr& cv_ptr) {
+        imgBufMutex.lock();
+        imgBuf.push(cv_ptr);
+        imgBufMutex.unlock();
+    }
+
     geometry_msgs::msg::TwistStamped offsetToDroneVelocity(
         const Eigen::Vector3f& offset,
         const Eigen::Matrix3f& rot_offset
@@ -134,20 +153,14 @@ private:
         return velocity_command;
     }
 
-    void processImage(
-        const cv_bridge::CvImageConstPtr& left,
-        const cv_bridge::CvImageConstPtr& right
-    )
-    {
-        processed_images = processed_images + 1;
-
-        double timestamp = rclcpp::Time(left->header.stamp).seconds();
-        Sophus::SE3f pose = slam->TrackStereo(left->image,right->image,timestamp);
-
-        std::cout << "Counter:" << processed_images << "\n";
-
+    void processDataAndStibilize(
+        const cv_bridge::CvImageConstPtr& cv_ptr,
+        const std::vector<ORB_SLAM3::IMU::Point>& imu_vector
+    ) {
+        double timestamp = rclcpp::Clock(RCL_SYSTEM_TIME).now().seconds();
+        Sophus::SE3f pose = slam->TrackMonocular(cv_ptr->image, timestamp, imu_vector);
         if (pose.translation().norm() == 0) return;
-
+        
         if (should_save_pose) {
             saveCheckpointPose(pose);
         }
@@ -167,47 +180,119 @@ private:
         velocity_pub->publish(cmd_vel_stamped);
     }
 
-    void compressedImageCallback(
-        const sensor_msgs::msg::CompressedImage::SharedPtr left,
-        const sensor_msgs::msg::CompressedImage::SharedPtr right
-    ) {
+    cv_bridge::CvImageConstPtr extractOldestImage() {
+        while (1) {
+            if (imgBuf.empty()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
+        
+            imgBufMutex.lock();
+            cv_bridge::CvImageConstPtr cv_img = imgBuf.front();
+            imgBuf.pop();
+            imgBufMutex.unlock();
+        
+            return cv_img;
+        }
+    }
+
+    std::vector<ORB_SLAM3::IMU::Point> extractImuPointsUpTo(const rclcpp::Time& image_timestamp) {
+        std::vector<ORB_SLAM3::IMU::Point> imu_vector;
+
+        std::lock_guard<std::mutex> lock(imuBufMutex);
+        while (!imuBuf.empty()) {
+            auto imu_msg = imuBuf.front();
+            auto imu_timestamp =  rclcpp::Time(imu_msg->header.stamp);
+            if (imu_timestamp > image_timestamp) {
+                break;
+            }
+
+            cv::Point3f acc(
+                imu_msg->linear_acceleration.x,
+                imu_msg->linear_acceleration.y,
+                imu_msg->linear_acceleration.z
+            );
+            cv::Point3f gyr(
+                imu_msg->angular_velocity.x,
+                imu_msg->angular_velocity.y,
+                imu_msg->angular_velocity.z
+            );
+
+            std::cout << "Got IMU:" << imu_timestamp.seconds() << "\n";
+            imu_vector.push_back(ORB_SLAM3::IMU::Point(acc, gyr, imu_timestamp.seconds()));
+            imuBuf.pop();
+        }
+
+        return imu_vector;
+    }
+
+    void doStabilizationSync() {
+        while (1) {        
+            cv_bridge::CvImageConstPtr cv_img = extractOldestImage();
+            std::cout << "Got image:" << rclcpp::Time(cv_img->header.stamp).seconds() << "\n";
+            std::vector<ORB_SLAM3::IMU::Point> imu_points = extractImuPointsUpTo(cv_img->header.stamp);
+            processDataAndStibilize(cv_img, imu_points);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    
+    void rawImageCallback(const sensor_msgs::msg::Image::SharedPtr msg)
+    {
         try {
-            cv::Mat decoded_image_left = cv::imdecode(cv::Mat(left->data), cv::IMREAD_COLOR);
+            addImageToBuffer(cv_bridge::toCvShare(msg));
+        } catch (cv_bridge::Exception& e) {
+            throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
+        }
+    }
+    
 
-            cv_bridge::CvImagePtr cv_ptr_left(new cv_bridge::CvImage);
-            cv_ptr_left->image = decoded_image_left;
-            cv_ptr_left->encoding = sensor_msgs::image_encodings::BGR8;
-            cv_ptr_left->header = left->header;
-
-            cv::Mat decoded_image_right = cv::imdecode(cv::Mat(right->data), cv::IMREAD_COLOR);
-
-            cv_bridge::CvImagePtr cv_ptr_right(new cv_bridge::CvImage);
-            cv_ptr_right->image = decoded_image_right;
-            cv_ptr_right->encoding = sensor_msgs::image_encodings::BGR8;
-            cv_ptr_right->header = right->header;
-
-            processImage(cv_ptr_left, cv_ptr_right);
+    void compressedImageCallback(const sensor_msgs::msg::CompressedImage::SharedPtr msg)
+    {
+        try {
+            cv::Mat decoded_image = cv::imdecode(cv::Mat(msg->data), cv::IMREAD_COLOR);
+    
+            cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
+            cv_ptr->image = decoded_image;
+            cv_ptr->encoding = sensor_msgs::image_encodings::BGR8;
+            cv_ptr->header = msg->header;
+    
+            addImageToBuffer(cv_ptr);
         } catch (const std::exception& e) {
             throw std::runtime_error("cv_bridge exception: " + std::string(e.what()));
         }
     }
 };
 
+std::string getValidatedImageFormat(const std::string& image_format)
+{
+    bool is_valid = (image_format == "raw") || (image_format == "compressed_jpeg");
+    if (!is_valid)
+    {
+        cerr << endl << "Error: Invalid image format '" << image_format << "'. Allowed formats: 'raw', 'compressed_jpeg'" << endl;
+        rclcpp::shutdown();
+        exit(1);
+    }
+
+    return image_format;
+}
+
+
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
 
     if(argc != 5) {
-        cerr << endl << "Usage: rosrun ORB_SLAM3 Stabilization $camera_topic_name_left $camera_topic_name_right $path_to_vocabulary $path_to_settings" << endl;        
+        cerr << endl << "Usage: rosrun ORB_SLAM3 Stabilization $camera_topic_name $image_format $path_to_vocabulary $path_to_settings" << endl;        
         rclcpp::shutdown();
         return 1;
     }   
 
-    std::string camera_topic_name_left = argv[1];
-    std::string camera_topic_name_right = argv[2];
+    std::string camera_topic_name = argv[1];
+    std::string image_format = getValidatedImageFormat(argv[2]);
     std::string vocab_path = argv[3];
     std::string camera_calibration_path = argv[4];
 
-    auto node = std::make_shared<SLAMStabilizer>(camera_topic_name_left, camera_topic_name_right, vocab_path, camera_calibration_path);
+    auto node = std::make_shared<SLAMStabilizer>(camera_topic_name, image_format, vocab_path, camera_calibration_path);
 
     rclcpp::spin(node);
     rclcpp::shutdown();
