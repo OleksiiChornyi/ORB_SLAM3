@@ -76,8 +76,9 @@ ros2 run camera_ros camera_node --ros-args \
 ```
 CAMERA_TOPIC_NAME_LEFT="/stereo/left/image_raw/compressed"
 CAMERA_TOPIC_NAME_RIGHT="/stereo/right/image_raw/compressed"
+IMU_TOPIC_NAME="/imu/data"
 VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/visual_stabilization/calibration/rpi5_stereo_calibration.yaml"
 
-ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPIC_NAME_RIGHT $VOCABLUARY $CAMERA_CALIBRATION
+ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPIC_NAME_RIGHT $IMU_TOPIC_NAME $VOCABLUARY $CAMERA_CALIBRATION
 ```

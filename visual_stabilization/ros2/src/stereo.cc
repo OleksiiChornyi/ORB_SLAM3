@@ -48,9 +48,9 @@ public:
             "/stabilization/save_current_pose", 1, std::bind(&SLAMStabilizer::saveCurrentPoseCallback, this, _1)
         );
 
-        left_sub.subscribe(this, camera_topic_name_left);
-        right_sub.subscribe(this, camera_topic_name_right);
-        image_sync_sub = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(10), left_sub, right_sub);
+        img_left_sub.subscribe(this, camera_topic_name_left);
+        img_right_sub.subscribe(this, camera_topic_name_right);
+        image_sync_sub = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(10), img_left_sub, img_right_sub);
         image_sync_sub->registerCallback(&SLAMStabilizer::compressedImageCallback, this);
     }
 
@@ -77,10 +77,8 @@ private:
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_hold;
     rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sub_save_pose;
 
-    rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr sub_compressed_image;
-
-    message_filters::Subscriber<sensor_msgs::msg::CompressedImage> left_sub;
-    message_filters::Subscriber<sensor_msgs::msg::CompressedImage> right_sub;
+    message_filters::Subscriber<sensor_msgs::msg::CompressedImage> img_left_sub;
+    message_filters::Subscriber<sensor_msgs::msg::CompressedImage> img_right_sub;
 
     typedef message_filters::sync_policies::ApproximateTime<CompressedImage, CompressedImage> SyncPolicy;
     std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> image_sync_sub;
