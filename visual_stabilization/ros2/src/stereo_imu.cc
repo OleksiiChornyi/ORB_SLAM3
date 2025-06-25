@@ -30,7 +30,7 @@ public:
         const std::string& camera_calibration_path
     ): Node("orb_slam3_stabilization") {
 
-        slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::STEREO, true);
+        slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::IMU_STEREO, true);
 
         velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
 
@@ -50,8 +50,10 @@ public:
             "/stabilization/save_current_pose", 1, std::bind(&SLAMStabilizer::saveCurrentPoseCallback, this, _1)
         );
 
+        rclcpp::QoS imu_sub_profile(1000);
+        imu_sub_profile.reliability(rclcpp::ReliabilityPolicy::BestEffort);
         sub_imu = this->create_subscription<sensor_msgs::msg::Imu>(
-            imu_topic_name, 1000, std::bind(&SLAMStabilizer::trackImuCallback, this, _1)
+            imu_topic_name, imu_sub_profile, std::bind(&SLAMStabilizer::trackImuCallback, this, _1)
         );
 
         img_left_sub.subscribe(this, camera_topic_name_left);
@@ -73,8 +75,6 @@ private:
     std::atomic<bool> has_checkpoint{false};
     std::atomic<bool> should_save_pose{false};
     std::atomic<bool> should_go_to_pose{false};
-
-    std::atomic<int> processed_images{0};
 
     double movement_k = 5.0;
     double rotation_k = 0.25;
@@ -226,7 +226,6 @@ private:
                 imu_msg->angular_velocity.z
             );
 
-            std::cout << "Got IMU:" << imu_timestamp.seconds() << "\n";
             imu_vector.push_back(ORB_SLAM3::IMU::Point(acc, gyr, imu_timestamp.seconds()));
             imu_buf.pop();
         }
@@ -239,12 +238,8 @@ private:
         const cv_bridge::CvImageConstPtr& right,
         const std::vector<ORB_SLAM3::IMU::Point>& imu_vector
     ) {
-        processed_images = processed_images + 1;
-
         double timestamp = rclcpp::Time(left->header.stamp).seconds();
         Sophus::SE3f pose = slam->TrackStereo(left->image,right->image,timestamp, imu_vector);
-
-        std::cout << "Counter:" << processed_images << "\n";
 
         if (pose.translation().norm() == 0) return;
 
@@ -270,7 +265,6 @@ private:
     void doStabilizationSync() {
         while (1) {        
             auto [image_left, image_right] = extractOldestImagePair();
-            std::cout << "Got images:" << rclcpp::Time(image_left->header.stamp).seconds() << "\n";
             std::vector<ORB_SLAM3::IMU::Point> imu_points = extractImuPointsUpTo(image_left->header.stamp);
 
             processDataAndStibilize(image_left, image_right, imu_points);
