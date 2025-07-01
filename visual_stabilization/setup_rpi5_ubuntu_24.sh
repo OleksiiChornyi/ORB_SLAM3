@@ -62,6 +62,35 @@ sudo apt-get install -y libatlas-base-dev gfortran python3-dev libeigen3-dev lib
 sudo apt install -y libegl-dev libgl1-mesa-dev libopengl-dev libepoxy-dev python3-pip colcon
 python3.12 -m pip install --user wheel
 
+# Docker
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Install python rosbags-convert tool
+sudo apt install -y pipx
+pipx install rosbags
+pipx ensurepath
+
+# Install ROS1 imu calibration tool via docker
+cd ~/ORB_SLAM3/visual_stabilization/calibration
+sudo docker build -t allan_variance -f allan_variance .
+
+# Install ROS1 imu-camera calibration tools via docker
+sudo apt install -y x11-xserver-utils
+cd ~
+git clone https://github.com/ethz-asl/kalibr.git
+cd kalibr
+sudo docker build -t kalibr -f Dockerfile_ros1_18_04 .
+
 # Opencv
 sudo dpkg --remove --force-all python3-catkin-pkg
 sudo dpkg --remove --force-remove-reinstreq python3-rospkg python3-rosdistro
