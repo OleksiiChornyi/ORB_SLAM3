@@ -211,6 +211,52 @@ private:
         return imu_vector;
     }
 
+    geometry_msgs::PoseStamped trasform_slam_pose_to_vision_pose(
+        const Sophus::SE3f& pose,
+        const ros::Time& pose_timestamp
+    ) {
+        float roll_cam = 0.0;           // Camera rotation around X (rad)
+        float pitch_cam = 0.0;          // Camera rotation around Y (rad)
+        float yaw_cam = -4.7123889f;    // Camera rotation around Z (rad)
+        float scale = 1;
+        
+        // 1. Scale coordinates to represent real world.
+        Eigen::Vector3f position_orig = pose.translation() * scale;
+        Eigen::Matrix3f rotation_orig = pose.rotationMatrix();
+        float gamma_world = std::atan2(rotation_orig(1, 0), rotation_orig(0, 0));
+        
+        // 2. Rotation from original world frame to world frame with Y forward
+        // We use gamma from SLAM yaw, as SLAM switch x and y pose based on its yaw orientation.
+        // Shortly we reset coordinates to direction used on yaw 0, when SLAM was initialized.
+        Eigen::Vector3f position_body;
+        position_body.x() =  std::cos(gamma_world) * position_orig.x() + std::sin(gamma_world) * position_orig.y();
+        position_body.y() = -std::sin(gamma_world) * position_orig.x() + std::cos(gamma_world) * position_orig.y();
+        position_body.z() = position_orig.z();
+
+        // 3. Camera to body frame rotation
+        Eigen::Quaternionf quat_camera = Eigen::Quaternionf(rotation_orig);
+        Eigen::Quaternionf quat_camera_x = Eigen::Quaternionf(Eigen::AngleAxisf(roll_cam,  Eigen::Vector3f::UnitX()));
+        Eigen::Quaternionf quat_camera_y = Eigen::Quaternionf(Eigen::AngleAxisf(pitch_cam, Eigen::Vector3f::UnitY()));
+        Eigen::Quaternionf quat_camera_z = Eigen::Quaternionf(Eigen::AngleAxisf(yaw_cam,   Eigen::Vector3f::UnitZ()));
+
+        Eigen::Quaternionf quat_body = quat_camera * quat_camera_x * quat_camera_y * quat_camera_z;
+        quat_body.normalize();
+
+        // Output
+        geometry_msgs::PoseStamped msg_body_pose; 
+        msg_body_pose.header.stamp = pose_timestamp;
+        msg_body_pose.header.frame_id = "map";
+        // Convet to WNU to ENU by negating some coordinates
+        msg_body_pose.pose.position.x = -position_body.x();
+        msg_body_pose.pose.position.y = position_body.y();
+        msg_body_pose.pose.position.z = position_body.z();
+        msg_body_pose.pose.orientation.x = quat_body.x();
+        msg_body_pose.pose.orientation.y = quat_body.y();
+        msg_body_pose.pose.orientation.z = quat_body.z();
+        msg_body_pose.pose.orientation.w = quat_body.w();
+        return msg_body_pose;
+    }
+
     void processDataAndStibilize(
         const cv_bridge::CvImageConstPtr& left,
         const cv_bridge::CvImageConstPtr& right,
@@ -219,21 +265,7 @@ private:
         double timestamp = rclcpp::Time(left->header.stamp).seconds();
         Sophus::SE3f pose = slam->TrackStereo(left->image,right->image,timestamp, imu_vector);
 
-        geometry_msgs::msg::PoseStamped pose_msg;
-        pose_msg.header.stamp = this->now();
-        pose_msg.header.frame_id = "map";
-
-        pose_msg.pose.position.x = pose.translation().y() * 100;
-        pose_msg.pose.position.y = pose.translation().x() * 100;
-        pose_msg.pose.position.z = pose.translation().z() * 100;
-
-        Eigen::Quaternionf q(pose.rotationMatrix());
-        pose_msg.pose.orientation.x = q.x();
-        pose_msg.pose.orientation.y = q.y();
-        pose_msg.pose.orientation.z = q.z();
-        pose_msg.pose.orientation.w = q.w();
-
-        vision_pose_pub->publish(pose_msg);
+        vision_pose_pub->publish(trasform_slam_pose_to_vision_pose(pose));
     }
 
     void doStabilizationSync() {
