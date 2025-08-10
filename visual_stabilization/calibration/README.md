@@ -153,3 +153,5 @@ rosrun kalibr kalibr_calibrate_imu_camera \
     --imu /data/kalibr_imu.yaml \
     --cam /data/april_calib-camchain.yaml
 ```
+
+7. From `april_calib_camchain-imucam.yaml` transfer values of `T_cam_imu` to SLAM config `IMU.T_b_c1` param.

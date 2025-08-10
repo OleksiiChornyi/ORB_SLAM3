@@ -9,7 +9,7 @@ Follow [full calibration guidance](./visual_stabilization/calibration/README.md)
 1. Start mavros
 
 - sudo chmod 666 /dev/ttyACM0
-- ros2 launch mavros apm.launch fcu_url:=/dev/ttyACM0:921600
+- ros2 launch mavros apm.launch fcu_url:=/dev/ttyACM0:921600 fcu_protocol:="v2.0"
 - ros2 service call /mavros/set_stream_rate mavros_msgs/srv/StreamRate "{stream_id: 0, message_rate: 10, on_off: true}"
 
 Note: `ttyACM0` for USB connection

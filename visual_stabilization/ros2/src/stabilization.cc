@@ -6,7 +6,7 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
-#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
@@ -32,7 +32,7 @@ public:
 
         slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::IMU_STEREO, true);
 
-        velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
+        vision_pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", 10);
 
         sub_movement_k = this->create_subscription<std_msgs::msg::Float64>(
             "/stabilization/movement_k", 1, std::bind(&SLAMStabilizer::movementCallback, this, _1)
@@ -86,7 +86,7 @@ private:
     std::queue<cv_bridge::CvImageConstPtr> img_right_buf;
     std::mutex img_buf_mutex;
 
-    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr velocity_pub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr vision_pose_pub;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_movement_k;
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_rotation_k;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_hold;
@@ -126,28 +126,6 @@ private:
         Eigen::Vector3f translation = checkpoint_pose.translation();
         std::cout << "Saved Pose:\n";
         std::cout << "x: " << translation.x() << ", y: " << translation.y() << ", z: " << translation.z() << std::endl;
-    }
-
-    geometry_msgs::msg::TwistStamped offsetToDroneVelocity(
-        const Eigen::Vector3f& offset,
-        const Eigen::Matrix3f& rot_offset
-    ) {
-        geometry_msgs::msg::TwistStamped velocity_command;
-        velocity_command.header.stamp = this->now();
-        velocity_command.header.frame_id = "base_link";
-
-        float pitch = std::asin(-rot_offset(2, 0));
-        float yaw = std::atan2(rot_offset(1, 0), rot_offset(0, 0));
-        float roll = std::atan2(rot_offset(2, 1), rot_offset(2, 2));
-        std::cout << "pitch: " << pitch << ", yaw: " << yaw << ", roll: " << roll << std::endl;
-
-        velocity_command.twist.linear.x = offset.y() * movement_k;
-        velocity_command.twist.linear.y = offset.x() * movement_k;
-        velocity_command.twist.linear.z = -offset.z() * movement_k;
-        velocity_command.twist.angular.x = -roll * rotation_k;
-        velocity_command.twist.angular.y = -pitch * rotation_k;
-        velocity_command.twist.angular.z = -yaw * rotation_k;
-        return velocity_command;
     }
 
     void trackImuCallback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) {
@@ -241,25 +219,21 @@ private:
         double timestamp = rclcpp::Time(left->header.stamp).seconds();
         Sophus::SE3f pose = slam->TrackStereo(left->image,right->image,timestamp, imu_vector);
 
-        if (pose.translation().norm() == 0) return;
+        geometry_msgs::msg::PoseStamped pose_msg;
+        pose_msg.header.stamp = this->now();
+        pose_msg.header.frame_id = "map";
 
-        if (should_save_pose) {
-            saveCheckpointPose(pose);
-        }
+        pose_msg.pose.position.x = pose.translation().y() * 100;
+        pose_msg.pose.position.y = pose.translation().x() * 100;
+        pose_msg.pose.position.z = pose.translation().z() * 100;
 
-        if (!has_checkpoint) return;
-        if (!should_go_to_pose) return;
+        Eigen::Quaternionf q(pose.rotationMatrix());
+        pose_msg.pose.orientation.x = q.x();
+        pose_msg.pose.orientation.y = q.y();
+        pose_msg.pose.orientation.z = q.z();
+        pose_msg.pose.orientation.w = q.w();
 
-        Eigen::Vector3f offset = pose.translation() - checkpoint_pose.translation();
-        Eigen::Matrix3f rotation_offset = pose.rotationMatrix() * checkpoint_pose.rotationMatrix().transpose();
-
-        std::cout << "dx: " << offset.x() << ", dy: " << offset.y() << ", dz: " << offset.z() << std::endl;
-        std::cout << "norm" << offset.norm() << "\n";
-
-        if (offset.norm() < 0.002) return;
-
-        geometry_msgs::msg::TwistStamped cmd_vel_stamped = offsetToDroneVelocity(offset, rotation_offset);
-        velocity_pub->publish(cmd_vel_stamped);
+        vision_pose_pub->publish(pose_msg);
     }
 
     void doStabilizationSync() {
