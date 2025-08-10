@@ -34,22 +34,6 @@ public:
 
         vision_pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", 10);
 
-        sub_movement_k = this->create_subscription<std_msgs::msg::Float64>(
-            "/stabilization/movement_k", 1, std::bind(&SLAMStabilizer::movementCallback, this, _1)
-        );
-
-        sub_rotation_k = this->create_subscription<std_msgs::msg::Float64>(
-            "/stabilization/rotation_k", 1, std::bind(&SLAMStabilizer::rotationCallback, this, _1)
-        );
-
-        sub_hold = this->create_subscription<std_msgs::msg::Bool>(
-            "/stabilization/enable_hold", 1, std::bind(&SLAMStabilizer::holdCallback, this, _1)
-        );
-
-        sub_save_pose = this->create_subscription<std_msgs::msg::Empty>(
-            "/stabilization/save_current_pose", 1, std::bind(&SLAMStabilizer::saveCurrentPoseCallback, this, _1)
-        );
-
         rclcpp::QoS imu_sub_profile(1000);
         imu_sub_profile.reliability(rclcpp::ReliabilityPolicy::BestEffort);
         sub_imu = this->create_subscription<sensor_msgs::msg::Imu>(
@@ -71,13 +55,6 @@ public:
 
 private:
     ORB_SLAM3::System* slam;
-    Sophus::SE3f checkpoint_pose;
-    std::atomic<bool> has_checkpoint{false};
-    std::atomic<bool> should_save_pose{false};
-    std::atomic<bool> should_go_to_pose{false};
-
-    double movement_k = 5.0;
-    double rotation_k = 0.25;
 
     std::queue<sensor_msgs::msg::Imu::SharedPtr> imu_buf;
     std::mutex imu_buf_mutex;
@@ -87,10 +64,6 @@ private:
     std::mutex img_buf_mutex;
 
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr vision_pose_pub;
-    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_movement_k;
-    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sub_rotation_k;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_hold;
-    rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr sub_save_pose;
     
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
     message_filters::Subscriber<sensor_msgs::msg::CompressedImage> img_left_sub;
@@ -100,33 +73,6 @@ private:
     std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> image_sync_sub;
 
     std::thread stabilization_thread;
-
-    void movementCallback(const std_msgs::msg::Float64::SharedPtr msg) {
-        std::cout << msg->data << "movementCallback:\n";
-        movement_k = msg->data;
-    }
-
-    void rotationCallback(const std_msgs::msg::Float64::SharedPtr msg) {
-        rotation_k = msg->data;
-    }
-
-    void holdCallback(const std_msgs::msg::Bool::SharedPtr msg) {
-        should_go_to_pose = msg->data;
-    }
-
-    void saveCurrentPoseCallback(const std_msgs::msg::Empty::SharedPtr) {
-        should_save_pose = true;
-    }
-
-    void saveCheckpointPose(const Sophus::SE3f& pose) {
-        checkpoint_pose = pose;
-        has_checkpoint = true;
-        should_save_pose = false;
-
-        Eigen::Vector3f translation = checkpoint_pose.translation();
-        std::cout << "Saved Pose:\n";
-        std::cout << "x: " << translation.x() << ", y: " << translation.y() << ", z: " << translation.z() << std::endl;
-    }
 
     void trackImuCallback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) {
         imu_buf_mutex.lock();
@@ -211,10 +157,7 @@ private:
         return imu_vector;
     }
 
-    geometry_msgs::PoseStamped trasform_slam_pose_to_vision_pose(
-        const Sophus::SE3f& pose,
-        const ros::Time& pose_timestamp
-    ) {
+    geometry_msgs::msg::PoseStamped trasform_slam_pose_to_vision_pose(const Sophus::SE3f& pose) {
         float roll_cam = 0.0;           // Camera rotation around X (rad)
         float pitch_cam = 0.0;          // Camera rotation around Y (rad)
         float yaw_cam = -4.7123889f;    // Camera rotation around Z (rad)
@@ -243,8 +186,8 @@ private:
         quat_body.normalize();
 
         // Output
-        geometry_msgs::PoseStamped msg_body_pose; 
-        msg_body_pose.header.stamp = pose_timestamp;
+        geometry_msgs::msg::PoseStamped msg_body_pose; 
+        msg_body_pose.header.stamp = this->now();
         msg_body_pose.header.frame_id = "map";
         // Convet to WNU to ENU by negating some coordinates
         msg_body_pose.pose.position.x = -position_body.x();
