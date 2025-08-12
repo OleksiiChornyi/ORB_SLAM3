@@ -2,7 +2,8 @@
 
 ## Preparation
 
-Follow [full calibration guidance](./visual_stabilization/calibration/README.md) required for proper work of SLAM.
+1. Follow [full calibration guidance](./calibration/README.md) required for proper work of SLAM.
+2. To communicate between your PC WSL and Raspberi Pi you need to follow some [network adjustments steps](./window_network.md).
 
 ## Start All
 
@@ -44,6 +45,18 @@ ros2 run camera_ros camera_node --ros-args \
 
 3. Start SLAM
 
+Without IMU:
+```
+CAMERA_TOPIC_NAME_LEFT="/stereo/left/image_raw/compressed"
+CAMERA_TOPIC_NAME_RIGHT="/stereo/right/image_raw/compressed"
+IMU_TOPIC_NAME="/mavros/imu/data_raw"
+VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
+
+ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPIC_NAME_RIGHT $VOCABLUARY $CAMERA_CALIBRATION
+```
+
+OR with IMU:
 ```
 CAMERA_TOPIC_NAME_LEFT="/stereo/left/image_raw/compressed"
 CAMERA_TOPIC_NAME_RIGHT="/stereo/right/image_raw/compressed"
