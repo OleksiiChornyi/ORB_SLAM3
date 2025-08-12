@@ -24,6 +24,12 @@ To allow ROS2 communicate between Rapbery Pi and your PC we need to adjust firew
     6. `Profile` => All checked
     7. `Name` => `ROS2` (or any you wish)
 
+5. Mirror use Window network in WSL:
+    1. Open `C:\User\[YourName]\.wslconfig` file.
+    2. Add a new line with `networkingMode=mirrored`.
+
+5. Reload your PC
+
 # ROS2 topics
 
 Note: Even after this change whenever you use `ros2 topic ...` command, you should add `--no-daemon` flag in WSL.
