@@ -29,7 +29,7 @@ public:
         const std::string& camera_calibration_path
     ): Node("orb_slam3_stabilization") {
 
-        slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::IMU_STEREO, true);
+        slam = new ORB_SLAM3::System(vocab_path, camera_calibration_path, ORB_SLAM3::System::STEREO, true);
 
         vision_pose_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", 10);
 
