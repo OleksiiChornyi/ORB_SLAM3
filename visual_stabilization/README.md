@@ -4,6 +4,29 @@
 
 1. Follow [full calibration guidance](./calibration/README.md) required for proper work of SLAM.
 2. To communicate between your PC WSL and Raspberi Pi you need to follow some [network adjustments steps](./window_network.md).
+3. Adupilot params setup:
+  - VISO_TYPE = 1;
+  - AHRS_GPS_USE = 0;
+  - FS_EKF_THRESH = 0;
+
+  - EK3_SRC1_POSXY = 6;
+  - EK3_SRC1_POSZ = 1;
+  - EK3_SRC1_VELXY = 6;
+  - EK3_SRC1_VELZ = 6;
+  - EK3_SRC1_YAW = 6;
+  - Same values for EK3_SRC2 and EK3_SRC3;
+
+  - EK3_VELD_M_NSE = 0.1;
+  - EK3_VELNE_M_NSE = 0.1;
+  - EK3_POSNE_M_NSE = 0.1;
+  - COMPASS_ENABLED = 0;
+  - COMPASS_USE = 0;
+  - COMPASS_USE2 = 0;
+  - COMPASS_USE3 = 0;
+
+  - SR0_PARAMS = 5;
+  - SR0_POSITION = 10;
+  - SR0_EXT_STAT = 10;
 
 ## Start All
 
@@ -49,7 +72,6 @@ Without IMU:
 ```
 CAMERA_TOPIC_NAME_LEFT="/stereo/left/image_raw/compressed"
 CAMERA_TOPIC_NAME_RIGHT="/stereo/right/image_raw/compressed"
-IMU_TOPIC_NAME="/mavros/imu/data_raw"
 VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
 

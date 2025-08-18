@@ -55,7 +55,7 @@ ros2 run camera_calibration cameracalibrator \
 
 3. Now move you grid to different poses in camera. Best follow advises from: https://wiki.ros.org/camera_calibration/Tutorials/MonocularCalibration
 
-4. Save you calibration results and extract `left.yaml` and `right.yaml` files from calibration zip to `/home/drones/ORB_SLAM3/visual_stabilization/calibration` folder.
+4. Save you calibration results and extract `left.yaml` and `right.yaml` files from calibration zip to `/home/drones/ORB_SLAM3/visual_stabilization/calibration` folder. 
 
 5. Adjust SLAM calibration files based on following [this guide](./camera_calimration_to_yaml.md)
 

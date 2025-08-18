@@ -96,10 +96,12 @@ private:
         float roll_cam = 0.0;           // Camera rotation around X (rad)
         float pitch_cam = 0.0;          // Camera rotation around Y (rad)
         float yaw_cam = -4.7123889f;    // Camera rotation around Z (rad)
-        float scale = 1;
+        float scaleX = 8;
+        float scaleY = 8;
+        float scaleZ = 8;
         
         // 1. Scale coordinates to represent real world.
-        Eigen::Vector3f position_orig = pose.translation() * scale;
+        Eigen::Vector3f position_orig = pose.translation();
         Eigen::Matrix3f rotation_orig = pose.rotationMatrix();
         float gamma_world = std::atan2(rotation_orig(1, 0), rotation_orig(0, 0));
         
@@ -120,18 +122,22 @@ private:
         Eigen::Quaternionf quat_body = quat_camera * quat_camera_x * quat_camera_y * quat_camera_z;
         quat_body.normalize();
 
+        // 4. Convert left-handed rotation to right-handed
+        Eigen::Quaternionf quat_right_hand = Eigen::Quaternionf(quat_body.w(),  - quat_body.x(), - quat_body.y(), quat_body.z());
+        quat_right_hand.normalize();
+
         // Output
         geometry_msgs::msg::PoseStamped msg_body_pose; 
         msg_body_pose.header.stamp = this->now();
         msg_body_pose.header.frame_id = "map";
         // Convet to WNU to ENU by negating some coordinates
-        msg_body_pose.pose.position.x = -position_body.x();
-        msg_body_pose.pose.position.y = position_body.y();
-        msg_body_pose.pose.position.z = position_body.z();
-        msg_body_pose.pose.orientation.x = quat_body.x();
-        msg_body_pose.pose.orientation.y = quat_body.y();
-        msg_body_pose.pose.orientation.z = quat_body.z();
-        msg_body_pose.pose.orientation.w = quat_body.w();
+        msg_body_pose.pose.position.x = -position_body.x() * scaleX;
+        msg_body_pose.pose.position.y = position_body.y() * scaleY;
+        msg_body_pose.pose.position.z = position_body.z() * scaleZ;
+        msg_body_pose.pose.orientation.x = -quat_right_hand.y();
+        msg_body_pose.pose.orientation.y = -quat_right_hand.x();
+        msg_body_pose.pose.orientation.z = quat_right_hand.z();
+        msg_body_pose.pose.orientation.w = quat_right_hand.w();
         return msg_body_pose;
     }
 };
