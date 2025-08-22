@@ -9,6 +9,7 @@ NOTE: This instruction is extension of https://github.com/UbiquityRobotics/raspi
 Left
 ```
 ros2 run camera_ros camera_node --ros-args \
+  --remap __node:=left_camera \
   -p camera:=0 \
   -p camera_info_url:=file:///home/drones/ORB_SLAM3/visual_stabilization/calibration/left.yaml \
   -p width:=320 \
@@ -22,6 +23,7 @@ ros2 run camera_ros camera_node --ros-args \
 Right
 ```
 ros2 run camera_ros camera_node --ros-args \
+  --remap __node:=right_camera \
   -p camera:=1 \
   -p camera_info_url:=file:///home/drones/ORB_SLAM3/visual_stabilization/calibration/right.yaml \
   -p width:=320 \
@@ -46,8 +48,8 @@ ros2 run camera_calibration cameracalibrator \
   --no-service-check \
   --approximate 0.1 \
   --ros-args \
-  --remap right:=/stereo/right/image_raw \
-  --remap left:=/stereo/left/image_raw \
+  --remap right:=/right_camera/image_raw \
+  --remap left:=/left_camera/image_raw \
   --remap right_camera:=/stereo/right/camera_info \
   --remap left_camera:=/stereo/left/camera_info \
   --remap stereo:=true

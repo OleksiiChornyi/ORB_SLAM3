@@ -40,9 +40,10 @@ Note: `ttyACM0` for USB connection
 
 2. Start left and right camera with 30 fps
 
-left
+Left
 ```
 ros2 run camera_ros camera_node --ros-args \
+  --remap __node:=left_camera \
   -p camera:=0 \
   -p camera_info_url:=file:///home/drones/ORB_SLAM3/visual_stabilization/calibration/left.yaml \
   -p width:=320 \
@@ -53,9 +54,10 @@ ros2 run camera_ros camera_node --ros-args \
   -p FrameDurationLimits:="[32500,32500]"
 ```
 
-right
+Right
 ```
 ros2 run camera_ros camera_node --ros-args \
+  --remap __node:=right_camera \
   -p camera:=1 \
   -p camera_info_url:=file:///home/drones/ORB_SLAM3/visual_stabilization/calibration/right.yaml \
   -p width:=320 \
@@ -70,8 +72,8 @@ ros2 run camera_ros camera_node --ros-args \
 
 Without IMU:
 ```
-CAMERA_TOPIC_NAME_LEFT="/stereo/left/image_raw/compressed"
-CAMERA_TOPIC_NAME_RIGHT="/stereo/right/image_raw/compressed"
+CAMERA_TOPIC_NAME_LEFT="/left_camera/image_raw/compressed"
+CAMERA_TOPIC_NAME_RIGHT="/right_camera/image_raw/compressed"
 VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
 
@@ -80,8 +82,8 @@ ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPI
 
 OR with IMU:
 ```
-CAMERA_TOPIC_NAME_LEFT="/stereo/left/image_raw/compressed"
-CAMERA_TOPIC_NAME_RIGHT="/stereo/right/image_raw/compressed"
+CAMERA_TOPIC_NAME_LEFT="/left_camera/image_raw/compressed"
+CAMERA_TOPIC_NAME_RIGHT="/right_camera/image_raw/compressed"
 IMU_TOPIC_NAME="/mavros/imu/data_raw"
 VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"

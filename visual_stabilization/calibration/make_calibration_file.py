@@ -47,46 +47,37 @@ def extract_rectification_matrix(camera_data):
 def extract_projection_matrix(camera_data):
     return np.array(camera_data['projection_matrix']['data']).reshape(3, 4)
 
-# Calculate the relative transformation T_c1_c2
-def calculate_t_c1_c2(R_c1, R_c2, projection_matrix_right):
-    # Extract Tx from the right camera's projection matrix
-    Tx = projection_matrix_right[0, 3]
-    
-    # Calculate t2 = Tx / fx (where fx is from the right camera's projection matrix)
-    fx_right = projection_matrix_right[0, 0]
-    t2 = np.array([Tx / fx_right, 0.0, 0.0])
-    
-    # Using sample matrices, calculate the relative rotation and translation
-    R_diff = np.dot(R_c1.T, R_c2)
-    T_diff = t2 - np.dot(R_diff, np.array([0.0, 0.0, 0.0]))  # assuming t1 = [0, 0, 0]
-    
-    return R_diff, T_diff
+def calculate_rotation_difference(R1, R2):
+    R1_inv = np.linalg.inv(R1)
+    R_diff = np.dot(R1_inv, R2)
+    return R_diff
+
+def calculate_t_diff(R1, t1, t2):
+    R1_inv = np.linalg.inv(R1)
+    t_diff = np.dot(R1_inv, (t2 - t1))
+    return t_diff
+
+def extract_translation_from_projection(P):
+    # P is 3x4, translation is last column divided by fx
+    fx = P[0, 0]
+    Tx = P[0, 3]
+    t = np.array([Tx / fx, 0.0, 0.0])
+    return t
 
 # Function to save the final SLAM calibration to a YAML file
-def save_slam_calibration_to_file(camera1_params, camera2_params, R_diff, T_diff, output_file, threshold=1e-6):
-    # Конвертируем R_diff в список
-    R_diff_list = R_diff.flatten().tolist()  # Преобразуем numpy-массив в список
-    
-    # Конвертируем T_diff в простой список
-    T_diff_list = T_diff.tolist()
-
+def save_slam_calibration_to_file(camera1_params, camera2_params, T_c1_c2, output_file, threshold=1e-6):
+    # Преобразуем матрицу в список
+    T_c1_c2_list = T_c1_c2.flatten().tolist()
     # Применяем порог для исключения очень маленьких значений
-    T_diff_list = [round(t, 6) if abs(t) > threshold else 0.0 for t in T_diff_list]
-
-    # Объединяем R_diff и T_diff в один список
-    combined_data = R_diff_list + T_diff_list
-
+    T_c1_c2_list = [round(t, 8) if abs(t) > threshold else 0.0 for t in T_c1_c2_list]
     # Форматируем данные в строки по 4 элемента в каждой
     data_lines = []
-    for i in range(0, len(combined_data), 4):
-        line = ', '.join([f'{combined_data[j]:.8f}' for j in range(i, min(i + 4, len(combined_data)))])
-        # Добавляем запятую в конце каждой строки, кроме последней
-        if i + 4 < len(combined_data):
+    for i in range(0, len(T_c1_c2_list), 4):
+        line = ', '.join([f'{T_c1_c2_list[j]:.8f}' for j in range(i, min(i + 4, len(T_c1_c2_list)))])
+        if i + 4 < len(T_c1_c2_list):
             data_lines.append(line + ',')
         else:
             data_lines.append(line)
-    
-    # Собираем строку для data
     data_str = '\n         '.join(data_lines)
 
     # Собираем финальную строку для записи в файл
@@ -232,13 +223,23 @@ def main():
     # Extract projection matrices for left and right cameras
     projection_matrix_left = extract_projection_matrix(left_data)
     projection_matrix_right = extract_projection_matrix(right_data)
+
+    # Получаем трансляции из projection matrix
+    t1 = extract_translation_from_projection(projection_matrix_left)
+    t2 = extract_translation_from_projection(projection_matrix_right)
     
-    # Calculate the relative transformation (T_c1_c2)
-    R_diff, T_diff = calculate_t_c1_c2(R_c1, R_c2, projection_matrix_right)
+    # Вычисляем относительную матрицу поворота и трансляции
+    R_diff = calculate_rotation_difference(R_c1, R_c2)
+    t_diff = calculate_t_diff(R_c1, t1, t2)
+
+    # Собираем 4x4 матрицу
+    T_c1_c2 = np.eye(4)
+    T_c1_c2[:3, :3] = R_diff
+    T_c1_c2[:3, 3] = t_diff
     
     # Save the final SLAM calibration to the output path
     output_path = os.path.join(PATH_TO_OUTPUT_FILE, OUTPUT_FILE)
-    save_slam_calibration_to_file(camera1_params, camera2_params, R_diff, T_diff, output_path)
+    save_slam_calibration_to_file(camera1_params, camera2_params, T_c1_c2, output_path)
 
     # Copy left.yaml and right.yaml to the output directory
     shutil.copy(os.path.join(EXTRACT_DIR, 'left.yaml'), os.path.join(PATH_TO_OUTPUT_FILE, 'left.yaml'))
