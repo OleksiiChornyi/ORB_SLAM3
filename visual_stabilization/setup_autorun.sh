@@ -142,11 +142,11 @@ RequiresMountsFor=/home
 Type=oneshot
 RemainAfterExit=yes
 KillMode=process
-User='$(whoami)'
-WorkingDirectory='$HOME'
+User=drones
+WorkingDirectory=/home/drones
 Environment=TERM=xterm-256color
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/bin/bash ~/autorun/start_all_tmux.sh
+ExecStart=/bin/bash /home/drones/start_all_tmux.sh
 
 [Install]
 WantedBy=multi-user.target
