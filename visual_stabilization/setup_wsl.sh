@@ -70,7 +70,7 @@ sudo apt install -y libegl-dev libgl1-mesa-dev libopengl-dev libepoxy-dev python
 python3.12 -m pip install --user wheel
 
 # Setup utorun
-# bash ~/ORB_SLAM3/visual_stabilization/setup_autorun.sh
+bash ~/ORB_SLAM3/visual_stabilization/setup_autorun_wsl.sh
 
 # Docker
 sudo apt-get update
