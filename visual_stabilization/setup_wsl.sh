@@ -123,7 +123,8 @@ cd ~/ORB_SLAM3
 
 mv CMakeLists_ubuntu_24.txt CMakeLists.txt
 ./build.sh
-bash ~/ORB_SLAM/visual_stabilization/build_ros2_wsl.sh
+chmod +x ./visual_stabilization/build_ros2.sh
+./visual_stabilization/build_ros2.sh
 source ~/ORB_SLAM3/visual_stabilization/ros2/install/setup.bash
 echo "source ~/ORB_SLAM3/visual_stabilization/ros2/install/setup.bash" >> ~/.bashrc
 
