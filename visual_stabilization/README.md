@@ -45,7 +45,7 @@ Left
 ros2 run camera_ros camera_node --ros-args \
   --remap __node:=left_camera \
   -p camera:=0 \
-  -p camera_info_url:=file:///home/drones/ORB_SLAM3/visual_stabilization/calibration/left.yaml \
+  -p camera_info_url:=file://$HOME/ORB_SLAM3/visual_stabilization/calibration/left.yaml \
   -p width:=320 \
   -p height:=240 \
   -r /camera/image_raw:=/stereo/left/image_raw \
@@ -59,12 +59,26 @@ Right
 ros2 run camera_ros camera_node --ros-args \
   --remap __node:=right_camera \
   -p camera:=1 \
-  -p camera_info_url:=file:///home/drones/ORB_SLAM3/visual_stabilization/calibration/right.yaml \
+  -p camera_info_url:=file://$HOME/ORB_SLAM3/visual_stabilization/calibration/right.yaml \
   -p width:=320 \
   -p height:=240 \
   -r /camera/image_raw:=/stereo/right/image_raw \
   -r /camera/camera_info:=/stereo/right/camera_info \
   -r /camera/image_raw/compressed:=/stereo/right/image_raw/compressed \
+  -p FrameDurationLimits:="[32500,32500]"
+```
+
+Mono USB
+```
+ros2 run usb_cam usb_cam_node_exe --ros-args \
+  --remap __node:=mono_camera \
+  -p video_device:=/dev/video0 \
+  -p image_width:=640 \
+  -p image_height:=480 \
+  -p pixel_format:="mjpeg2rgb" \
+  -r image_raw:=/mono/image_raw \
+  -r /camera/image_raw/compressed:=/mono/image_raw/compressed \
+  -r camera_info:=/mono/camera_info \
   -p FrameDurationLimits:="[32500,32500]"
 ```
 
@@ -74,8 +88,8 @@ Without IMU:
 ```
 CAMERA_TOPIC_NAME_LEFT="/left_camera/image_raw/compressed"
 CAMERA_TOPIC_NAME_RIGHT="/right_camera/image_raw/compressed"
-VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
-CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
+VOCABLUARY="//$HOME/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="//$HOME/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
 
 ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPIC_NAME_RIGHT $VOCABLUARY $CAMERA_CALIBRATION
 ```
@@ -85,8 +99,18 @@ OR with IMU:
 CAMERA_TOPIC_NAME_LEFT="/left_camera/image_raw/compressed"
 CAMERA_TOPIC_NAME_RIGHT="/right_camera/image_raw/compressed"
 IMU_TOPIC_NAME="/mavros/imu/data_raw"
-VOCABLUARY="/home/drones/ORB_SLAM3/Vocabulary/ORBvoc.txt"
-CAMERA_CALIBRATION="/home/drones/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
+VOCABLUARY="//$HOME/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="//$HOME/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
 
 ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPIC_NAME_RIGHT $IMU_TOPIC_NAME $VOCABLUARY $CAMERA_CALIBRATION
+```
+
+OR MONO USB:
+```
+CAMERA_TOPIC_NAME="/image_raw/compressed"
+IMAGE_FORMAT="mono"
+VOCABLUARY="//$HOME/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="//$HOME/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
+
+ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME $IMAGE_FORMAT $VOCABLUARY $CAMERA_CALIBRATION
 ```
