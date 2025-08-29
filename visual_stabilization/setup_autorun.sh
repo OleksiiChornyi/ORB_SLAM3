@@ -86,14 +86,14 @@ VOCABLUARY="//$HOME/ORB_SLAM3/Vocabulary/ORBvoc.txt"
 CAMERA_CALIBRATION="//$HOME/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
 
 while true; do
-    if ros2 topic list | grep -q "$CAMERA_TOPIC_NAME_LEFT" && ros2 topic list | grep -q "$CAMERA_TOPIC_NAME_RIGHT"; then
-        ros2 param set /left_camera AfMode 2
-        ros2 param set /right_camera AfMode 2
-        while true; do
-            sleep 1000
-        done
+    if ros2 topic list | grep "$CAMERA_TOPIC_NAME_LEFT" && ros2 topic list | grep "$CAMERA_TOPIC_NAME_RIGHT"; then
+        # ros2 param set /left_camera AfMode 2
+        # ros2 param set /right_camera AfMode 2
         # echo "Camera topics ready, starting SLAM..."
         # xvfb-run -a -s "-screen 0 1280x720x24" ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPIC_NAME_RIGHT $VOCABLUARY $CAMERA_CALIBRATION
+        while true; do
+            sleep 100
+        done
         break
     else
         echo "Camera topics not ready, waiting..."
