@@ -93,7 +93,7 @@ CAMERA_CALIBRATION="//$HOME/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5
 
 ros2 run drones_stabilization Stabilization $CAMERA_TOPIC_NAME_LEFT $CAMERA_TOPIC_NAME_RIGHT $VOCABLUARY $CAMERA_CALIBRATION
 ```
-
+x
 OR with IMU:
 ```
 CAMERA_TOPIC_NAME_LEFT="/left_camera/image_raw/compressed"

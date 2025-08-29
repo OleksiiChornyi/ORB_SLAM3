@@ -82,8 +82,8 @@ cat > ~/autorun/start_slam.sh << 'EOF'
 
 CAMERA_TOPIC_NAME_LEFT="/left_camera/image_raw/compressed"
 CAMERA_TOPIC_NAME_RIGHT="/right_camera/image_raw/compressed"
-VOCABLUARY="$HOME/ORB_SLAM3/Vocabulary/ORBvoc.txt"
-CAMERA_CALIBRATION="$HOME/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
+VOCABLUARY="//$HOME/ORB_SLAM3/Vocabulary/ORBvoc.txt"
+CAMERA_CALIBRATION="//$HOME/ORB_SLAM3/visual_stabilization/calibration/slam_rpi5_stereo_calibration.yaml"
 
 while true; do
     if ros2 topic list | grep -q "$CAMERA_TOPIC_NAME_LEFT" && ros2 topic list | grep -q "$CAMERA_TOPIC_NAME_RIGHT"; then
